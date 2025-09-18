@@ -19,7 +19,8 @@ except ImportError:
     PIL_AVAILABLE = False
 
 # LinkedIn 使用标准 requests 库，无需额外依赖
-LINKEDIN_AVAILABLE = True
+TELEGRAM_AVAILABLE = True
+INSTAGRAM_AVAILABLE = True
 
 # 页面配置
 st.set_page_config(
@@ -40,6 +41,8 @@ dependencies_status = {
     "✅ Requests": True,
     "📷 PIL/Pillow": PIL_AVAILABLE,
     "🐦 Twitter (tweepy)": TWITTER_AVAILABLE,
+    "📨 Telegram": TELEGRAM_AVAILABLE,
+    "📸 Instagram": INSTAGRAM_AVAILABLE,
 }
 
 for dep, status in dependencies_status.items():
@@ -75,69 +78,79 @@ def publish_to_twitter(content, twitter_config):
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
-def publish_to_linkedin(content, linkedin_config):
-    """发布到 LinkedIn"""
+def publish_to_telegram(content, telegram_config):
+    """发布到 Telegram 频道"""
     try:
-        token = linkedin_config['token']
-        person_id = linkedin_config['person_id']
+        bot_token = telegram_config['bot_token']
+        channel_id = telegram_config['channel_id']
         
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }
+        # Telegram Bot API URL
+        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
         
         # 准备发布数据
-        post_data = {
-            'author': f'urn:li:person:{person_id}',
-            'lifecycleState': 'PUBLISHED',
-            'specificContent': {
-                'com.linkedin.ugc.ShareContent': {
-                    'shareCommentary': {
-                        'text': content
-                    },
-                    'shareMediaCategory': 'NONE'
-                }
-            },
-            'visibility': {
-                'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
-            }
-        }
-        
-        # 发布帖子
-        response = requests.post(
-            'https://api.linkedin.com/v2/ugcPosts',
-            headers=headers,
-            json=post_data
-        )
-        
-        if response.status_code == 201:
-            post_id = response.json().get('id', '')
-            return {'success': True, 'post_id': post_id}
-        else:
-            return {'success': False, 'error': f'HTTP {response.status_code}: {response.text}'}
-            
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-def publish_to_weibo(content, weibo_config):
-    """发布到微博"""
-    try:
-        token = weibo_config['token']
-        
-        # 微博发布 API
-        url = 'https://api.weibo.com/2/statuses/update.json'
         data = {
-            'access_token': token,
-            'status': content
+            'chat_id': channel_id,
+            'text': content,
+            'parse_mode': 'HTML',  # 支持 HTML 格式
+            'disable_web_page_preview': False
         }
         
         response = requests.post(url, data=data)
         
         if response.status_code == 200:
             result = response.json()
+            if result['ok']:
+                return {'success': True, 'post_id': result['result']['message_id']}
+            else:
+                return {'success': False, 'error': result.get('description', 'Unknown error')}
+        else:
+            return {'success': False, 'error': f'HTTP {response.status_code}'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def publish_to_instagram(content, instagram_config):
+    """发布到 Instagram（使用 Instagram Basic Display API）"""
+    try:
+        access_token = instagram_config['access_token']
+        user_id = instagram_config['user_id']
+        
+        # Instagram Basic Display API - 创建媒体容器
+        # 注意：Instagram API 需要图片，纯文本无法发布
+        if 'media_url' not in instagram_config:
+            return {'success': False, 'error': 'Instagram 需要图片才能发布内容'}
+        
+        media_url = instagram_config['media_url']
+        
+        # 第一步：创建媒体容器
+        container_url = f"https://graph.instagram.com/v18.0/{user_id}/media"
+        container_data = {
+            'image_url': media_url,
+            'caption': content,
+            'access_token': access_token
+        }
+        
+        container_response = requests.post(container_url, data=container_data)
+        
+        if container_response.status_code != 200:
+            return {'success': False, 'error': f'创建媒体容器失败: {container_response.text}'}
+        
+        container_id = container_response.json().get('id')
+        
+        # 第二步：发布媒体
+        publish_url = f"https://graph.instagram.com/v18.0/{user_id}/media_publish"
+        publish_data = {
+            'creation_id': container_id,
+            'access_token': access_token
+        }
+        
+        publish_response = requests.post(publish_url, data=publish_data)
+        
+        if publish_response.status_code == 200:
+            result = publish_response.json()
             return {'success': True, 'post_id': result.get('id', '')}
         else:
-            return {'success': False, 'error': f'微博API错误: {response.text}'}
+            return {'success': False, 'error': f'发布失败: {publish_response.text}'}
             
     except Exception as e:
         return {'success': False, 'error': str(e)}
@@ -182,57 +195,70 @@ with st.sidebar:
                 else:
                     st.warning("请填写所有 Twitter API 凭据")
     
-    # LinkedIn 配置
-    st.subheader("💼 LinkedIn")
-    with st.expander("LinkedIn API 设置"):
-        linkedin_access_token = st.text_input("Access Token", type="password", key="linkedin_token")
-        linkedin_person_id = st.text_input("Person/Company ID", key="linkedin_id")
+    # Telegram 配置
+    st.subheader("📨 Telegram")
+    with st.expander("Telegram Bot API 设置"):
+        telegram_bot_token = st.text_input("Bot Token", type="password", key="telegram_token", 
+                                         help="从 @BotFather 获取")
+        telegram_channel_id = st.text_input("频道 ID", key="telegram_channel", 
+                                          placeholder="@your_channel 或 -100xxxxxxxxx",
+                                          help="频道用户名（@开头）或频道 ID")
         
-        if st.button("连接 LinkedIn", key="connect_linkedin"):
-            if linkedin_access_token and linkedin_person_id:
+        if st.button("连接 Telegram", key="connect_telegram"):
+            if telegram_bot_token and telegram_channel_id:
                 try:
-                    # 验证 LinkedIn token
-                    headers = {'Authorization': f'Bearer {linkedin_access_token}'}
-                    response = requests.get('https://api.linkedin.com/v2/me', headers=headers)
+                    # 验证 bot token
+                    test_url = f"https://api.telegram.org/bot{telegram_bot_token}/getMe"
+                    response = requests.get(test_url)
                     
                     if response.status_code == 200:
-                        st.session_state.authenticated_platforms['linkedin'] = {
-                            'token': linkedin_access_token,
-                            'person_id': linkedin_person_id
-                        }
-                        user_info = response.json()
-                        name = f"{user_info.get('localizedFirstName', '')} {user_info.get('localizedLastName', '')}"
-                        st.success(f"✅ LinkedIn 连接成功！用户: {name}")
+                        bot_info = response.json()
+                        if bot_info['ok']:
+                            st.session_state.authenticated_platforms['telegram'] = {
+                                'bot_token': telegram_bot_token,
+                                'channel_id': telegram_channel_id
+                            }
+                            bot_name = bot_info['result']['first_name']
+                            st.success(f"✅ Telegram 连接成功！Bot: {bot_name}")
+                        else:
+                            st.error("❌ Bot Token 无效")
                     else:
-                        st.error("❌ LinkedIn 连接失败")
+                        st.error("❌ Telegram 连接失败")
                 except Exception as e:
-                    st.error(f"❌ LinkedIn 连接失败: {str(e)}")
+                    st.error(f"❌ Telegram 连接失败: {str(e)}")
             else:
-                st.warning("请填写 LinkedIn 凭据")
+                st.warning("请填写 Bot Token 和频道 ID")
     
-    # 微博 API 配置（使用简化版本）
-    st.subheader("🔴 微博")
-    with st.expander("微博 API 设置（实验性）"):
-        weibo_access_token = st.text_input("微博 Access Token", type="password", key="weibo_token")
+    # Instagram 配置  
+    st.subheader("📸 Instagram")
+    with st.expander("Instagram API 设置"):
+        instagram_access_token = st.text_input("Access Token", type="password", key="instagram_token")
+        instagram_user_id = st.text_input("Instagram User ID", key="instagram_user_id")
         
-        if st.button("连接微博", key="connect_weibo"):
-            if weibo_access_token:
+        st.info("⚠️ Instagram 需要图片才能发布内容，纯文本无法发布")
+        
+        if st.button("连接 Instagram", key="connect_instagram"):
+            if instagram_access_token and instagram_user_id:
                 try:
-                    # 验证微博 token
-                    response = requests.get(
-                        'https://api.weibo.com/2/account/get_uid.json',
-                        params={'access_token': weibo_access_token}
-                    )
+                    # 验证 Instagram token
+                    test_url = f"https://graph.instagram.com/v18.0/{instagram_user_id}"
+                    params = {'fields': 'id,username', 'access_token': instagram_access_token}
+                    response = requests.get(test_url, params=params)
                     
                     if response.status_code == 200:
-                        st.session_state.authenticated_platforms['weibo'] = {
-                            'token': weibo_access_token
+                        user_info = response.json()
+                        st.session_state.authenticated_platforms['instagram'] = {
+                            'access_token': instagram_access_token,
+                            'user_id': instagram_user_id
                         }
-                        st.success("✅ 微博连接成功！")
+                        username = user_info.get('username', 'Unknown')
+                        st.success(f"✅ Instagram 连接成功！用户: @{username}")
                     else:
-                        st.error("❌ 微博连接失败")
+                        st.error(f"❌ Instagram 连接失败: {response.text}")
                 except Exception as e:
-                    st.error(f"❌ 微博连接失败: {str(e)}")
+                    st.error(f"❌ Instagram 连接失败: {str(e)}")
+            else:
+                st.warning("请填写 Instagram 凭据")
     
     # 显示已连接平台
     st.header("✅ 已连接平台")
@@ -252,16 +278,19 @@ if not st.session_state.authenticated_platforms:
         3. 创建新应用
         4. 生成 API Keys 和 Access Tokens
         
-        ### 💼 LinkedIn API  
-        1. 访问 [developer.linkedin.com](https://developer.linkedin.com)
-        2. 创建应用
-        3. 申请 w_member_social 权限
-        4. 获取访问令牌
+        ### 📨 Telegram Bot API  
+        1. 在 Telegram 中找到 @BotFather
+        2. 发送 `/newbot` 创建新 bot
+        3. 获取 Bot Token
+        4. 将 bot 添加到您的频道并设为管理员
+        5. 频道 ID 格式：@channel_name 或 -100xxxxxxxxx
         
-        ### 🔴 微博 API
-        1. 访问 [open.weibo.com](https://open.weibo.com)
-        2. 创建应用
-        3. 获取访问令牌
+        ### 📸 Instagram API
+        1. 访问 [developers.facebook.com](https://developers.facebook.com)
+        2. 创建 Facebook 应用
+        3. 添加 Instagram Basic Display 产品
+        4. 获取用户访问令牌和用户 ID
+        5. ⚠️ 注意：Instagram 只能发布带图片的内容
         """)
 else:
     # 发布功能
@@ -319,8 +348,8 @@ else:
             for platform in st.session_state.authenticated_platforms:
                 platform_name = {
                     'twitter': '🐦 Twitter',
-                    'linkedin': '💼 LinkedIn', 
-                    'weibo': '🔴 微博'
+                    'telegram': '📨 Telegram', 
+                    'instagram': '📸 Instagram'
                 }.get(platform, platform.title())
                 
                 if st.checkbox(f"发布到 {platform_name}", value=True, key=f"select_{platform}"):
@@ -345,6 +374,28 @@ else:
                     hashtags = st.text_input("标签（用空格分隔）", value="#社交媒体 #分享", key="twitter_hashtag_input")
                 else:
                     hashtags = ""
+            
+            # Telegram 特定设置
+            if 'telegram' in selected_platforms:
+                st.write("**📨 Telegram 设置**")
+                telegram_format = st.selectbox("消息格式", ["普通文本", "HTML", "Markdown"], key="telegram_format")
+                disable_preview = st.checkbox("禁用链接预览", key="telegram_preview")
+            
+            # Instagram 特定设置
+            if 'instagram' in selected_platforms:
+                st.write("**📸 Instagram 设置**")
+                st.warning("⚠️ Instagram 需要图片才能发布")
+                if uploaded_files:
+                    st.success(f"✅ 已上传 {len(uploaded_files)} 张图片")
+                else:
+                    st.error("❌ 请上传至少一张图片")
+                
+                # 图片URL输入（用于Instagram API）
+                image_url_for_instagram = st.text_input(
+                    "图片公开URL（Instagram API需要）", 
+                    placeholder="https://example.com/image.jpg",
+                    help="Instagram API需要公开可访问的图片URL"
+                )
         
         # 发布按钮
         button_text = "👀 预览发布内容" if publish_mode == "预览模式" else "🚀 发布到选中平台"
@@ -394,10 +445,24 @@ else:
                                 
                                 if platform == 'twitter':
                                     result = publish_to_twitter(final_content, st.session_state.authenticated_platforms['twitter'])
-                                elif platform == 'linkedin':
-                                    result = publish_to_linkedin(final_content, st.session_state.authenticated_platforms['linkedin'])
-                                elif platform == 'weibo':
-                                    result = publish_to_weibo(final_content, st.session_state.authenticated_platforms['weibo'])
+                                elif platform == 'telegram':
+                                    # 为Telegram准备特殊格式
+                                    telegram_content = final_content
+                                    if 'telegram_format' in locals():
+                                        if telegram_format == "HTML":
+                                            telegram_content = final_content.replace('\n', '<br>')
+                                        elif telegram_format == "Markdown":
+                                            telegram_content = final_content
+                                    
+                                    result = publish_to_telegram(telegram_content, st.session_state.authenticated_platforms['telegram'])
+                                elif platform == 'instagram':
+                                    # Instagram需要图片URL
+                                    instagram_config = st.session_state.authenticated_platforms['instagram'].copy()
+                                    if 'image_url_for_instagram' in locals() and image_url_for_instagram:
+                                        instagram_config['media_url'] = image_url_for_instagram
+                                        result = publish_to_instagram(final_content, instagram_config)
+                                    else:
+                                        result = {'success': False, 'error': '需要提供图片URL'}
                                 else:
                                     result = {'success': False, 'error': 'Unsupported platform'}
                                 
@@ -410,7 +475,7 @@ else:
                     st.header("📊 发布结果")
                     success_count = 0
                     for platform, result in publish_results.items():
-                        platform_icon = {'twitter': '🐦', 'linkedin': '💼', 'weibo': '🔴'}.get(platform, '📱')
+                        platform_icon = {'twitter': '🐦', 'telegram': '📨', 'instagram': '📸'}.get(platform, '📱')
                         
                         if result['success']:
                             st.success(f"✅ {platform_icon} {platform.title()}: 发布成功！")
@@ -464,7 +529,7 @@ else:
         with col1:
             st.subheader("🔌 平台连接管理")
             for platform in list(st.session_state.authenticated_platforms.keys()):
-                platform_icon = {'twitter': '🐦', 'linkedin': '💼', 'weibo': '🔴'}.get(platform, '📱')
+                platform_icon = {'twitter': '🐦', 'telegram': '📨', 'instagram': '📸'}.get(platform, '📱')
                 col_a, col_b = st.columns([3, 1])
                 with col_a:
                     st.write(f"{platform_icon} {platform.title()} - 已连接")
