@@ -79,17 +79,6 @@ python-dateutil>=2.8.2
    - Access Token
    - Access Token Secret
 
-### LinkedIn API
-1. 访问 [developer.linkedin.com](https://developer.linkedin.com)
-2. 创建应用
-3. 申请 `w_member_social` 权限
-4. 获取访问令牌和个人/公司 ID
-
-### 微博 API
-1. 访问 [open.weibo.com](https://open.weibo.com)
-2. 创建应用并通过审核
-3. 获取访问令牌
-
 ## 🎯 使用方法
 
 ### 基础使用
