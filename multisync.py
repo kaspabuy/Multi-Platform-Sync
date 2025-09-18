@@ -61,8 +61,8 @@ if 'publish_history' not in st.session_state:
     st.session_state.publish_history = []
 
 # 发布函数定义（需要在调用前定义）
-def publish_to_twitter(content, twitter_config):
-    """发布到 Twitter"""
+def publish_to_twitter(content, twitter_config, media_files=None):
+    """发布到 Twitter，支持图片上传"""
     try:
         client = twitter_config['client']
         
@@ -70,37 +70,110 @@ def publish_to_twitter(content, twitter_config):
         if len(content) > 280:
             return {'success': False, 'error': '内容超过 280 字符限制'}
         
-        # 发布推文
-        response = client.create_tweet(text=content)
+        # 处理图片上传
+        media_ids = []
+        if media_files:
+            # 创建 API v1.1 客户端用于媒体上传
+            auth = tweepy.OAuth1UserHandler(
+                twitter_config.get('consumer_key'),
+                twitter_config.get('consumer_secret'),
+                twitter_config.get('access_token'),
+                twitter_config.get('access_token_secret')
+            )
+            api_v1 = tweepy.API(auth)
+            
+            for media_file in media_files[:4]:  # Twitter 最多支持4张图片
+                try:
+                    # 将上传的文件转换为字节
+                    media_file.seek(0)  # 重置文件指针
+                    media_data = media_file.read()
+                    
+                    # 上传媒体
+                    media = api_v1.media_upload(filename=media_file.name, file=io.BytesIO(media_data))
+                    media_ids.append(media.media_id)
+                except Exception as e:
+                    st.warning(f"图片 {media_file.name} 上传失败: {str(e)}")
         
-        return {'success': True, 'post_id': response.data['id']}
+        # 发布推文
+        if media_ids:
+            response = client.create_tweet(text=content, media_ids=media_ids)
+        else:
+            response = client.create_tweet(text=content)
+        
+        return {'success': True, 'post_id': response.data['id'], 'media_count': len(media_ids)}
         
     except Exception as e:
         return {'success': False, 'error': str(e)}
 
-def publish_to_telegram(content, telegram_config):
-    """发布到 Telegram 频道"""
+def publish_to_telegram(content, telegram_config, media_files=None):
+    """发布到 Telegram 频道，支持图片"""
     try:
         bot_token = telegram_config['bot_token']
         channel_id = telegram_config['channel_id']
         
-        # Telegram Bot API URL
-        url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
-        
-        # 准备发布数据
-        data = {
-            'chat_id': channel_id,
-            'text': content,
-            'parse_mode': 'HTML',  # 支持 HTML 格式
-            'disable_web_page_preview': False
-        }
-        
-        response = requests.post(url, data=data)
+        # 如果有图片，发送图片+文字
+        if media_files:
+            # Telegram 支持多种媒体类型
+            if len(media_files) == 1:
+                # 单张图片
+                media_file = media_files[0]
+                media_file.seek(0)
+                
+                url = f"https://api.telegram.org/bot{bot_token}/sendPhoto"
+                
+                files = {'photo': (media_file.name, media_file, 'image/jpeg')}
+                data = {
+                    'chat_id': channel_id,
+                    'caption': content,
+                    'parse_mode': 'HTML'
+                }
+                
+                response = requests.post(url, data=data, files=files)
+            else:
+                # 多张图片 - 使用 media group
+                media_group = []
+                files = {}
+                
+                for i, media_file in enumerate(media_files[:10]):  # Telegram 最多10张
+                    media_file.seek(0)
+                    file_key = f"photo{i}"
+                    files[file_key] = (media_file.name, media_file, 'image/jpeg')
+                    
+                    media_item = {
+                        'type': 'photo',
+                        'media': f'attach://{file_key}'
+                    }
+                    
+                    # 第一张图片添加caption
+                    if i == 0:
+                        media_item['caption'] = content
+                        media_item['parse_mode'] = 'HTML'
+                    
+                    media_group.append(media_item)
+                
+                url = f"https://api.telegram.org/bot{bot_token}/sendMediaGroup"
+                data = {
+                    'chat_id': channel_id,
+                    'media': json.dumps(media_group)
+                }
+                
+                response = requests.post(url, data=data, files=files)
+        else:
+            # 纯文本消息
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            data = {
+                'chat_id': channel_id,
+                'text': content,
+                'parse_mode': 'HTML',
+                'disable_web_page_preview': False
+            }
+            response = requests.post(url, data=data)
         
         if response.status_code == 200:
             result = response.json()
             if result['ok']:
-                return {'success': True, 'post_id': result['result']['message_id']}
+                message_id = result['result']['message_id'] if 'message_id' in result['result'] else result['result'][0]['message_id']
+                return {'success': True, 'post_id': message_id}
             else:
                 return {'success': False, 'error': result.get('description', 'Unknown error')}
         else:
@@ -186,6 +259,10 @@ with st.sidebar:
                         user = client.get_me()
                         st.session_state.authenticated_platforms['twitter'] = {
                             'client': client,
+                            'consumer_key': twitter_api_key,
+                            'consumer_secret': twitter_api_secret,
+                            'access_token': twitter_access_token,
+                            'access_token_secret': twitter_access_secret,
                             'user_id': user.data.id,
                             'username': user.data.username
                         }
@@ -333,7 +410,8 @@ else:
                     for i, uploaded_file in enumerate(uploaded_files):
                         with cols[i % 3]:
                             image = Image.open(uploaded_file)
-                            st.image(image, caption=uploaded_file.name, use_column_width=True)
+                            # 修复：使用 use_container_width 替代 use_column_width
+                            st.image(image, caption=uploaded_file.name, use_container_width=True)
             else:
                 st.info("💡 安装 Pillow 包以支持图片上传功能")
             
@@ -366,7 +444,7 @@ else:
             # 平台特定设置
             st.subheader("⚙️ 平台设置")
             
-                            # Twitter 特定设置
+            # Twitter 特定设置
             if 'twitter' in selected_platforms:
                 st.write("**🐦 Twitter 设置**")
                 add_hashtags = st.checkbox("自动添加热门标签", key="twitter_hashtags")
@@ -426,6 +504,12 @@ else:
                             
                             if uploaded_files:
                                 st.write(f"**附件:** {len(uploaded_files)} 张图片")
+                                # 显示图片预览
+                                cols = st.columns(min(len(uploaded_files), 4))
+                                for i, uploaded_file in enumerate(uploaded_files):
+                                    with cols[i % 4]:
+                                        image = Image.open(uploaded_file)
+                                        st.image(image, use_container_width=True)
                 else:
                     # 实际发布
                     publish_results = {}
@@ -444,7 +528,11 @@ else:
                                     final_content += f"\n{link_url}"
                                 
                                 if platform == 'twitter':
-                                    result = publish_to_twitter(final_content, st.session_state.authenticated_platforms['twitter'])
+                                    result = publish_to_twitter(
+                                        final_content, 
+                                        st.session_state.authenticated_platforms['twitter'],
+                                        uploaded_files
+                                    )
                                 elif platform == 'telegram':
                                     # 为Telegram准备特殊格式
                                     telegram_content = final_content
@@ -454,7 +542,11 @@ else:
                                         elif telegram_format == "Markdown":
                                             telegram_content = final_content
                                     
-                                    result = publish_to_telegram(telegram_content, st.session_state.authenticated_platforms['telegram'])
+                                    result = publish_to_telegram(
+                                        telegram_content, 
+                                        st.session_state.authenticated_platforms['telegram'],
+                                        uploaded_files
+                                    )
                                 elif platform == 'instagram':
                                     # Instagram需要图片URL
                                     instagram_config = st.session_state.authenticated_platforms['instagram'].copy()
@@ -478,7 +570,11 @@ else:
                         platform_icon = {'twitter': '🐦', 'telegram': '📨', 'instagram': '📸'}.get(platform, '📱')
                         
                         if result['success']:
-                            st.success(f"✅ {platform_icon} {platform.title()}: 发布成功！")
+                            success_msg = f"✅ {platform_icon} {platform.title()}: 发布成功！"
+                            if 'media_count' in result and result['media_count'] > 0:
+                                success_msg += f" (包含 {result['media_count']} 张图片)"
+                            st.success(success_msg)
+                            
                             if 'post_id' in result:
                                 st.code(f"帖子 ID: {result['post_id']}")
                             success_count += 1
@@ -491,7 +587,8 @@ else:
                             'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                             'content': post_content[:50] + "..." if len(post_content) > 50 else post_content,
                             'platforms': [p for p, r in publish_results.items() if r['success']],
-                            'status': f"{success_count}/{len(selected_platforms)} 成功"
+                            'status': f"{success_count}/{len(selected_platforms)} 成功",
+                            'media_count': len(uploaded_files) if uploaded_files else 0
                         }
                         st.session_state.publish_history.append(history_record)
                     
@@ -514,6 +611,8 @@ else:
                     with col1:
                         st.write(f"**内容**: {record['content']}")
                         st.write(f"**平台**: {', '.join([p.title() for p in record['platforms']])}")
+                        if record.get('media_count', 0) > 0:
+                            st.write(f"**图片**: {record['media_count']} 张")
                     with col2:
                         st.write(f"**时间**: {record['timestamp']}")
                         st.write(f"**状态**: {record['status']}")
@@ -552,19 +651,41 @@ else:
         
         st.subheader("ℹ️ 应用信息")
         st.info(f"""
-        **版本**: 1.0.0
+        **版本**: 1.0.1 (已修复图片上传问题)
         **已连接平台**: {len(st.session_state.authenticated_platforms)}
         **发布记录**: {len(st.session_state.publish_history)} 条
         **依赖状态**: {"✅ 完整" if all(dependencies_status.values()) else "⚠️ 部分缺失"}
         """)
+        
+        # 新增：修复说明
+        with st.expander("🔧 最新修复内容", expanded=False):
+            st.markdown("""
+            ### ✅ 已修复问题:
+            1. **图片上传到 Twitter**: 现在支持同时上传文字和图片到 Twitter (最多4张)
+            2. **图片上传到 Telegram**: 支持单张或多张图片发布 (最多10张)  
+            3. **弃用参数修复**: 将 `use_column_width` 更新为 `use_container_width`
+            4. **发布历史增强**: 现在会记录包含的图片数量
+            5. **错误处理改进**: 更详细的错误信息和状态反馈
+            
+            ### 📋 使用说明:
+            - **Twitter**: 支持文字+图片，自动处理媒体上传
+            - **Telegram**: 单图用 sendPhoto，多图用 sendMediaGroup
+            - **Instagram**: 仍需要提供公开图片URL (API限制)
+            
+            ### 🔧 技术改进:
+            - 使用 Twitter API v1.1 进行媒体上传
+            - 使用 Twitter API v2 进行推文发布  
+            - 改进了文件处理和错误恢复机制
+            """)
 
 # 底部信息
 st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: gray;'>
-        📱 多平台社交媒体发布工具 | Made with Streamlit<br>
-        🔒 所有数据仅在您的浏览器会话中存储，确保隐私安全
+        📱 多平台社交媒体发布工具 v1.0.1 | Made with Streamlit<br>
+        🔒 所有数据仅在您的浏览器会话中存储，确保隐私安全<br>
+        ✅ 已修复图片上传和弃用参数问题
     </div>
     """, 
     unsafe_allow_html=True
