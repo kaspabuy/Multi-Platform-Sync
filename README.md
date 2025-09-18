@@ -1,5 +1,174 @@
 # 多平台社交媒体发布工具
 
+一个基于 Streamlit 的多平台社交媒体内容发布工具，支持 Twitter、LinkedIn、微博等平台的一键同步发布。
+
+## ✨ 功能特色
+
+- 🚀 **多平台发布**: 支持 Twitter、LinkedIn、微博
+- 📱 **直接 API 连接**: 无需第三方服务，直接连接官方 API
+- 🖼️ **图片上传**: 支持多图片上传和预览（需要 Pillow）
+- 🔗 **链接分享**: 自动添加链接到帖子
+- ⚙️ **平台特定设置**: 每个平台的个性化选项
+- 📊 **发布结果跟踪**: 实时显示发布状态
+- 👀 **预览模式**: 发布前预览内容
+- 💾 **会话历史**: 本地存储发布记录
+
+## 🚀 GitHub + Streamlit Cloud 部署
+
+### 1. 创建 GitHub 仓库
+
+1. 在 GitHub 上创建新仓库
+2. 将以下文件上传到仓库：
+   - `app.py` (主应用文件)
+   - `requirements.txt` (依赖文件)
+   - `README.md` (说明文档)
+
+### 2. 部署到 Streamlit Cloud
+
+1. 访问 [share.streamlit.io](https://share.streamlit.io)
+2. 使用 GitHub 账户登录
+3. 选择您的仓库和 `app.py` 文件
+4. 点击 "Deploy" 开始部署
+
+### 3. 文件结构
+```
+your-repo/
+├── app.py              # 主应用文件（重命名 multisync.py）
+├── requirements.txt    # 依赖包列表
+└── README.md          # 说明文档
+```
+
+## 📦 依赖管理
+
+应用采用**渐进式依赖加载**：
+
+### 核心功能（必需）
+- `streamlit` - Web 应用框架
+- `requests` - HTTP 请求库
+
+### 增强功能（可选）
+- `Pillow` - 图片处理和预览
+- `tweepy` - Twitter API 支持
+- `python-dateutil` - 时间处理
+
+### 安装策略
+
+**最小安装**（仅基础功能）:
+```txt
+streamlit>=1.28.0
+requests>=2.31.0
+```
+
+**推荐安装**（完整功能）:
+```txt
+streamlit>=1.28.0
+requests>=2.31.0
+Pillow>=10.0.0
+tweepy>=4.14.0
+python-dateutil>=2.8.2
+```
+
+## 🔑 API 配置指南
+
+### Twitter API (X)
+1. 访问 [developer.twitter.com](https://developer.twitter.com)
+2. 申请开发者账户
+3. 创建新应用，获取：
+   - API Key
+   - API Secret Key  
+   - Access Token
+   - Access Token Secret
+
+### LinkedIn API
+1. 访问 [developer.linkedin.com](https://developer.linkedin.com)
+2. 创建应用
+3. 申请 `w_member_social` 权限
+4. 获取访问令牌和个人/公司 ID
+
+### 微博 API
+1. 访问 [open.weibo.com](https://open.weibo.com)
+2. 创建应用并通过审核
+3. 获取访问令牌
+
+## 🎯 使用方法
+
+### 基础使用
+1. 打开部署后的应用链接
+2. 在侧边栏配置 API 凭据
+3. 连接想要使用的平台
+4. 在主页面写内容并发布
+
+### 高级功能
+- **预览模式**: 发布前查看内容效果
+- **平台特定设置**: 为不同平台定制内容
+- **发布历史**: 查看历史发布记录
+- **批量管理**: 一键连接/断开多个平台
+
+## 🔒 安全特性
+
+- **无服务器存储**: 所有数据仅存储在浏览器会话中
+- **API 凭据加密**: 密码输入框保护敏感信息
+- **最小权限原则**: 仅请求必要的 API 权限
+- **错误隔离**: 单个平台故障不影响其他平台
+
+## 🐛 故障排除
+
+### 常见问题
+
+**Q: 部署后提示缺少依赖**
+A: 检查 `requirements.txt` 文件是否包含所需包
+
+**Q: Twitter 发布失败**  
+A: 检查 API v2 权限，确保 Access Token 有写入权限
+
+**Q: LinkedIn 连接失败**
+A: 确认应用已申请 `w_member_social` 权限
+
+**Q: 图片功能不可用**
+A: 在 `requirements.txt` 中添加 `Pillow>=10.0.0`
+
+### 调试技巧
+
+1. 查看 Streamlit Cloud 部署日志
+2. 使用预览模式测试内容
+3. 检查 API 凭据有效性
+4. 确认平台 API 限额
+
+## 📈 功能路线图
+
+### v1.1 (计划中)
+- [ ] 定时发布功能
+- [ ] 内容模板系统
+- [ ] 发布数据统计
+
+### v1.2 (规划中)  
+- [ ] 更多平台支持
+- [ ] 内容 AI 优化建议
+- [ ] 团队协作功能
+
+## 🤝 贡献指南
+
+1. Fork 项目
+2. 创建功能分支
+3. 提交更改
+4. 发起 Pull Request
+
+## 📄 许可证
+
+MIT License - 详见 LICENSE 文件
+
+## 📞 技术支持
+
+- 🐛 问题报告：GitHub Issues
+- 💬 功能建议：GitHub Discussions  
+- 📧 联系方式：通过 GitHub 联系
+
+---
+
+⭐ **如果这个项目对您有帮助，请给个星标支持！**
+
+🚀 **立# 多平台社交媒体发布工具
+
 一个基于 Streamlit 的多平台社交媒体内容发布工具，支持 Twitter、Facebook、LinkedIn 等平台的一键同步发布。
 
 ## ✨ 功能特色

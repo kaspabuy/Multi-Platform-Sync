@@ -1,11 +1,12 @@
 # 基础依赖（必需）
 streamlit>=1.28.0
 requests>=2.31.0
+
+# 图片处理（推荐）
 Pillow>=10.0.0
 
 # 社交媒体平台 API 支持（可选）
 tweepy>=4.14.0
-facebook-sdk>=3.1.0
 
 # 其他工具包
 python-dateutil>=2.8.2
