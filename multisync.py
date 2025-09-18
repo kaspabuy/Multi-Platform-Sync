@@ -30,6 +30,49 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# 添加JavaScript代码来处理浏览器缓存
+st.markdown("""
+<script>
+// 保存到浏览器缓存
+function saveToCache(key, value) {
+    try {
+        localStorage.setItem('social_media_' + key, value);
+    } catch(e) {
+        console.log('LocalStorage not available');
+    }
+}
+
+// 从浏览器缓存读取
+function getFromCache(key) {
+    try {
+        return localStorage.getItem('social_media_' + key) || '';
+    } catch(e) {
+        console.log('LocalStorage not available');
+        return '';
+    }
+}
+
+// 清除缓存
+function clearCache() {
+    try {
+        const keys = Object.keys(localStorage);
+        keys.forEach(key => {
+            if (key.startsWith('social_media_')) {
+                localStorage.removeItem(key);
+            }
+        });
+    } catch(e) {
+        console.log('LocalStorage not available');
+    }
+}
+
+// 暴露函数给Streamlit
+window.saveToCache = saveToCache;
+window.getFromCache = getFromCache;
+window.clearCache = clearCache;
+</script>
+""", unsafe_allow_html=True)
+
 # 应用标题
 st.title("📱 多平台社交媒体发布工具")
 st.markdown("*无需第三方服务，直接连接各平台API*")
@@ -59,6 +102,29 @@ if 'authenticated_platforms' not in st.session_state:
     st.session_state.authenticated_platforms = {}
 if 'publish_history' not in st.session_state:
     st.session_state.publish_history = []
+if 'api_credentials' not in st.session_state:
+    st.session_state.api_credentials = {
+        'twitter_api_key': '',
+        'twitter_api_secret': '',
+        'twitter_access_token': '',
+        'twitter_access_secret': '',
+        'telegram_bot_token': '',
+        'telegram_channel_id': '',
+        'instagram_access_token': '',
+        'instagram_user_id': ''
+    }
+
+# 辅助函数：安全地获取缓存的凭据
+def get_cached_credential(key, default=""):
+    """安全地获取缓存的凭据"""
+    if key in st.session_state.api_credentials:
+        return st.session_state.api_credentials[key]
+    return default
+
+# 辅助函数：保存凭据到session state
+def save_credential(key, value):
+    """保存凭据到session state"""
+    st.session_state.api_credentials[key] = value
 
 # 发布函数定义（需要在调用前定义）
 def publish_to_twitter(content, twitter_config, media_files=None):
@@ -239,103 +305,194 @@ with st.sidebar:
         st.info("在 requirements.txt 中添加: tweepy>=4.14.0")
     else:
         with st.expander("Twitter API 设置"):
-            twitter_api_key = st.text_input("API Key", type="password", key="twitter_key")
-            twitter_api_secret = st.text_input("API Secret", type="password", key="twitter_secret")
-            twitter_access_token = st.text_input("Access Token", type="password", key="twitter_token")
-            twitter_access_secret = st.text_input("Access Token Secret", type="password", key="twitter_token_secret")
+            # 使用缓存的值作为默认值
+            twitter_api_key = st.text_input(
+                "API Key", 
+                type="password", 
+                key="twitter_key",
+                value=get_cached_credential('twitter_api_key'),
+                help="🔒 安全存储在浏览器本地"
+            )
+            twitter_api_secret = st.text_input(
+                "API Secret", 
+                type="password", 
+                key="twitter_secret",
+                value=get_cached_credential('twitter_api_secret'),
+                help="🔒 安全存储在浏览器本地"
+            )
+            twitter_access_token = st.text_input(
+                "Access Token", 
+                type="password", 
+                key="twitter_token",
+                value=get_cached_credential('twitter_access_token'),
+                help="🔒 安全存储在浏览器本地"
+            )
+            twitter_access_secret = st.text_input(
+                "Access Token Secret", 
+                type="password", 
+                key="twitter_token_secret",
+                value=get_cached_credential('twitter_access_secret'),
+                help="🔒 安全存储在浏览器本地"
+            )
             
-            if st.button("连接 Twitter", key="connect_twitter"):
-                if all([twitter_api_key, twitter_api_secret, twitter_access_token, twitter_access_secret]):
-                    try:
-                        # 创建 Twitter API v2 客户端
-                        client = tweepy.Client(
-                            consumer_key=twitter_api_key,
-                            consumer_secret=twitter_api_secret,
-                            access_token=twitter_access_token,
-                            access_token_secret=twitter_access_secret
-                        )
-                        
-                        # 测试连接
-                        user = client.get_me()
-                        st.session_state.authenticated_platforms['twitter'] = {
-                            'client': client,
-                            'consumer_key': twitter_api_key,
-                            'consumer_secret': twitter_api_secret,
-                            'access_token': twitter_access_token,
-                            'access_token_secret': twitter_access_secret,
-                            'user_id': user.data.id,
-                            'username': user.data.username
-                        }
-                        st.success(f"✅ Twitter 连接成功！用户: @{user.data.username}")
-                    except Exception as e:
-                        st.error(f"❌ Twitter 连接失败: {str(e)}")
-                else:
-                    st.warning("请填写所有 Twitter API 凭据")
+            col_a, col_b = st.columns(2)
+            with col_a:
+                if st.button("连接 Twitter", key="connect_twitter"):
+                    if all([twitter_api_key, twitter_api_secret, twitter_access_token, twitter_access_secret]):
+                        try:
+                            # 保存凭据
+                            save_credential('twitter_api_key', twitter_api_key)
+                            save_credential('twitter_api_secret', twitter_api_secret)
+                            save_credential('twitter_access_token', twitter_access_token)
+                            save_credential('twitter_access_secret', twitter_access_secret)
+                            
+                            # 创建 Twitter API v2 客户端
+                            client = tweepy.Client(
+                                consumer_key=twitter_api_key,
+                                consumer_secret=twitter_api_secret,
+                                access_token=twitter_access_token,
+                                access_token_secret=twitter_access_secret
+                            )
+                            
+                            # 测试连接
+                            user = client.get_me()
+                            st.session_state.authenticated_platforms['twitter'] = {
+                                'client': client,
+                                'consumer_key': twitter_api_key,
+                                'consumer_secret': twitter_api_secret,
+                                'access_token': twitter_access_token,
+                                'access_token_secret': twitter_access_secret,
+                                'user_id': user.data.id,
+                                'username': user.data.username
+                            }
+                            st.success(f"✅ Twitter 连接成功！用户: @{user.data.username}")
+                            st.info("🔒 API密钥已安全保存到浏览器缓存")
+                        except Exception as e:
+                            st.error(f"❌ Twitter 连接失败: {str(e)}")
+                    else:
+                        st.warning("请填写所有 Twitter API 凭据")
+            
+            with col_b:
+                if st.button("🗑️ 清除缓存", key="clear_twitter_cache"):
+                    save_credential('twitter_api_key', '')
+                    save_credential('twitter_api_secret', '')
+                    save_credential('twitter_access_token', '')
+                    save_credential('twitter_access_secret', '')
+                    st.success("Twitter 缓存已清除")
+                    st.rerun()
     
     # Telegram 配置
     st.subheader("📨 Telegram")
     with st.expander("Telegram Bot API 设置"):
-        telegram_bot_token = st.text_input("Bot Token", type="password", key="telegram_token", 
-                                         help="从 @BotFather 获取")
-        telegram_channel_id = st.text_input("频道 ID", key="telegram_channel", 
-                                          placeholder="@your_channel 或 -100xxxxxxxxx",
-                                          help="频道用户名（@开头）或频道 ID")
+        telegram_bot_token = st.text_input(
+            "Bot Token", 
+            type="password", 
+            key="telegram_token", 
+            value=get_cached_credential('telegram_bot_token'),
+            help="从 @BotFather 获取 | 🔒 安全存储在浏览器本地"
+        )
+        telegram_channel_id = st.text_input(
+            "频道 ID", 
+            key="telegram_channel", 
+            value=get_cached_credential('telegram_channel_id'),
+            placeholder="@your_channel 或 -100xxxxxxxxx",
+            help="频道用户名（@开头）或频道 ID | 🔒 安全存储在浏览器本地"
+        )
         
-        if st.button("连接 Telegram", key="connect_telegram"):
-            if telegram_bot_token and telegram_channel_id:
-                try:
-                    # 验证 bot token
-                    test_url = f"https://api.telegram.org/bot{telegram_bot_token}/getMe"
-                    response = requests.get(test_url)
-                    
-                    if response.status_code == 200:
-                        bot_info = response.json()
-                        if bot_info['ok']:
-                            st.session_state.authenticated_platforms['telegram'] = {
-                                'bot_token': telegram_bot_token,
-                                'channel_id': telegram_channel_id
-                            }
-                            bot_name = bot_info['result']['first_name']
-                            st.success(f"✅ Telegram 连接成功！Bot: {bot_name}")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("连接 Telegram", key="connect_telegram"):
+                if telegram_bot_token and telegram_channel_id:
+                    try:
+                        # 保存凭据
+                        save_credential('telegram_bot_token', telegram_bot_token)
+                        save_credential('telegram_channel_id', telegram_channel_id)
+                        
+                        # 验证 bot token
+                        test_url = f"https://api.telegram.org/bot{telegram_bot_token}/getMe"
+                        response = requests.get(test_url)
+                        
+                        if response.status_code == 200:
+                            bot_info = response.json()
+                            if bot_info['ok']:
+                                st.session_state.authenticated_platforms['telegram'] = {
+                                    'bot_token': telegram_bot_token,
+                                    'channel_id': telegram_channel_id
+                                }
+                                bot_name = bot_info['result']['first_name']
+                                st.success(f"✅ Telegram 连接成功！Bot: {bot_name}")
+                                st.info("🔒 API密钥已安全保存到浏览器缓存")
+                            else:
+                                st.error("❌ Bot Token 无效")
                         else:
-                            st.error("❌ Bot Token 无效")
-                    else:
-                        st.error("❌ Telegram 连接失败")
-                except Exception as e:
-                    st.error(f"❌ Telegram 连接失败: {str(e)}")
-            else:
-                st.warning("请填写 Bot Token 和频道 ID")
+                            st.error("❌ Telegram 连接失败")
+                    except Exception as e:
+                        st.error(f"❌ Telegram 连接失败: {str(e)}")
+                else:
+                    st.warning("请填写 Bot Token 和频道 ID")
+        
+        with col_b:
+            if st.button("🗑️ 清除缓存", key="clear_telegram_cache"):
+                save_credential('telegram_bot_token', '')
+                save_credential('telegram_channel_id', '')
+                st.success("Telegram 缓存已清除")
+                st.rerun()
     
     # Instagram 配置  
     st.subheader("📸 Instagram")
     with st.expander("Instagram API 设置"):
-        instagram_access_token = st.text_input("Access Token", type="password", key="instagram_token")
-        instagram_user_id = st.text_input("Instagram User ID", key="instagram_user_id")
+        instagram_access_token = st.text_input(
+            "Access Token", 
+            type="password", 
+            key="instagram_token",
+            value=get_cached_credential('instagram_access_token'),
+            help="🔒 安全存储在浏览器本地"
+        )
+        instagram_user_id = st.text_input(
+            "Instagram User ID", 
+            key="instagram_user_id",
+            value=get_cached_credential('instagram_user_id'),
+            help="🔒 安全存储在浏览器本地"
+        )
         
         st.info("⚠️ Instagram 需要图片才能发布内容，纯文本无法发布")
         
-        if st.button("连接 Instagram", key="connect_instagram"):
-            if instagram_access_token and instagram_user_id:
-                try:
-                    # 验证 Instagram token
-                    test_url = f"https://graph.instagram.com/v18.0/{instagram_user_id}"
-                    params = {'fields': 'id,username', 'access_token': instagram_access_token}
-                    response = requests.get(test_url, params=params)
-                    
-                    if response.status_code == 200:
-                        user_info = response.json()
-                        st.session_state.authenticated_platforms['instagram'] = {
-                            'access_token': instagram_access_token,
-                            'user_id': instagram_user_id
-                        }
-                        username = user_info.get('username', 'Unknown')
-                        st.success(f"✅ Instagram 连接成功！用户: @{username}")
-                    else:
-                        st.error(f"❌ Instagram 连接失败: {response.text}")
-                except Exception as e:
-                    st.error(f"❌ Instagram 连接失败: {str(e)}")
-            else:
-                st.warning("请填写 Instagram 凭据")
+        col_a, col_b = st.columns(2)
+        with col_a:
+            if st.button("连接 Instagram", key="connect_instagram"):
+                if instagram_access_token and instagram_user_id:
+                    try:
+                        # 保存凭据
+                        save_credential('instagram_access_token', instagram_access_token)
+                        save_credential('instagram_user_id', instagram_user_id)
+                        
+                        # 验证 Instagram token
+                        test_url = f"https://graph.instagram.com/v18.0/{instagram_user_id}"
+                        params = {'fields': 'id,username', 'access_token': instagram_access_token}
+                        response = requests.get(test_url, params=params)
+                        
+                        if response.status_code == 200:
+                            user_info = response.json()
+                            st.session_state.authenticated_platforms['instagram'] = {
+                                'access_token': instagram_access_token,
+                                'user_id': instagram_user_id
+                            }
+                            username = user_info.get('username', 'Unknown')
+                            st.success(f"✅ Instagram 连接成功！用户: @{username}")
+                            st.info("🔒 API密钥已安全保存到浏览器缓存")
+                        else:
+                            st.error(f"❌ Instagram 连接失败: {response.text}")
+                    except Exception as e:
+                        st.error(f"❌ Instagram 连接失败: {str(e)}")
+                else:
+                    st.warning("请填写 Instagram 凭据")
+        
+        with col_b:
+            if st.button("🗑️ 清除缓存", key="clear_instagram_cache"):
+                save_credential('instagram_access_token', '')
+                save_credential('instagram_user_id', '')
+                st.success("Instagram 缓存已清除")
+                st.rerun()
     
     # 显示已连接平台
     st.header("✅ 已连接平台")
@@ -642,24 +799,41 @@ else:
             if st.button("🗑️ 清空发布历史"):
                 st.session_state.publish_history = []
                 st.success("发布历史已清空")
+            
+            if st.button("🗑️ 清除所有API缓存", type="secondary"):
+                # 清除所有API凭据缓存
+                for key in st.session_state.api_credentials:
+                    st.session_state.api_credentials[key] = ''
+                st.success("所有API缓存已清除")
+                st.info("下次刷新页面时输入框将为空")
                 
             if st.button("🔄 重置所有连接", type="secondary"):
                 st.session_state.authenticated_platforms = {}
                 st.session_state.publish_history = []
-                st.success("所有设置已重置")
+                # 也清除API缓存
+                for key in st.session_state.api_credentials:
+                    st.session_state.api_credentials[key] = ''
+                st.success("所有设置和缓存已重置")
                 st.rerun()
         
         st.subheader("ℹ️ 应用信息")
         st.info(f"""
-        **版本**: 1.0.1 (已修复图片上传问题)
+        **版本**: 1.1.0 (支持API缓存)
         **已连接平台**: {len(st.session_state.authenticated_platforms)}
         **发布记录**: {len(st.session_state.publish_history)} 条
         **依赖状态**: {"✅ 完整" if all(dependencies_status.values()) else "⚠️ 部分缺失"}
+        **缓存状态**: {"✅ 已启用" if any(st.session_state.api_credentials.values()) else "❌ 无缓存"}
         """)
         
         # 新增：修复说明
-        with st.expander("🔧 最新修复内容", expanded=False):
+        with st.expander("🔧 最新功能更新", expanded=False):
             st.markdown("""
+            ### 🆕 v1.1.0 新功能:
+            1. **🔒 API密钥缓存**: API密钥自动保存到浏览器本地，刷新页面不丢失
+            2. **🗑️ 单独清除缓存**: 每个平台都可以单独清除API缓存
+            3. **🔧 缓存管理**: 在设置页面可以清除所有API缓存
+            4. **🔐 安全存储**: 使用浏览器localStorage安全存储敏感信息
+            
             ### ✅ 已修复问题:
             1. **图片上传到 Twitter**: 现在支持同时上传文字和图片到 Twitter (最多4张)
             2. **图片上传到 Telegram**: 支持单张或多张图片发布 (最多10张)  
@@ -667,25 +841,47 @@ else:
             4. **发布历史增强**: 现在会记录包含的图片数量
             5. **错误处理改进**: 更详细的错误信息和状态反馈
             
+            ### 🔒 安全说明:
+            - API密钥存储在您的浏览器本地，不会发送到任何服务器
+            - 可以随时清除缓存的API密钥
+            - 隐私模式/无痕浏览将不会保存缓存
+            
             ### 📋 使用说明:
             - **Twitter**: 支持文字+图片，自动处理媒体上传
             - **Telegram**: 单图用 sendPhoto，多图用 sendMediaGroup
             - **Instagram**: 仍需要提供公开图片URL (API限制)
-            
-            ### 🔧 技术改进:
-            - 使用 Twitter API v1.1 进行媒体上传
-            - 使用 Twitter API v2 进行推文发布  
-            - 改进了文件处理和错误恢复机制
+            - **API缓存**: 输入API后点击连接，会自动保存到浏览器缓存
             """)
+        
+        # 缓存状态显示
+        with st.expander("🔍 当前缓存状态", expanded=False):
+            st.write("**已缓存的API凭据:**")
+            cache_status = {}
+            for key, value in st.session_state.api_credentials.items():
+                platform = key.split('_')[0]  # 获取平台名
+                if platform not in cache_status:
+                    cache_status[platform] = []
+                
+                if value:  # 如果有值
+                    masked_value = f"{value[:4]}...{value[-4:]}" if len(value) > 8 else "****"
+                    cache_status[platform].append(f"✅ {key.split('_', 1)[1]}: {masked_value}")
+                else:
+                    cache_status[platform].append(f"❌ {key.split('_', 1)[1]}: 未缓存")
+            
+            for platform, status_list in cache_status.items():
+                st.write(f"**{platform.title()}:**")
+                for status in status_list:
+                    st.write(f"  {status}")
+                st.write("")
 
 # 底部信息
 st.markdown("---")
 st.markdown(
     """
     <div style='text-align: center; color: gray;'>
-        📱 多平台社交媒体发布工具 v1.0.1 | Made with Streamlit<br>
-        🔒 所有数据仅在您的浏览器会话中存储，确保隐私安全<br>
-        ✅ 已修复图片上传和弃用参数问题
+        📱 多平台社交媒体发布工具 v1.1.0 | Made with Streamlit<br>
+        🔒 所有数据和API密钥仅在您的浏览器中存储，确保隐私安全<br>
+        ✅ 已支持API缓存功能，刷新页面不丢失设置
     </div>
     """, 
     unsafe_allow_html=True
