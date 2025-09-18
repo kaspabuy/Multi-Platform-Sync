@@ -1,6 +1,4 @@
 import streamlit as st
-import tweepy
-import facebook
 import requests
 import json
 import base64
@@ -9,6 +7,24 @@ import os
 import tempfile
 from PIL import Image
 import io
+
+# 尝试导入可选的第三方库
+try:
+    import tweepy
+    TWITTER_AVAILABLE = True
+except ImportError:
+    TWITTER_AVAILABLE = False
+    st.sidebar.error("⚠️ Tweepy 未安装，Twitter 功能不可用")
+
+try:
+    import facebook
+    FACEBOOK_AVAILABLE = True
+except ImportError:
+    FACEBOOK_AVAILABLE = False
+    st.sidebar.error("⚠️ Facebook SDK 未安装，Facebook 功能不可用")
+
+# LinkedIn 使用标准 requests 库，无需额外依赖
+LINKEDIN_AVAILABLE = True
 
 # 页面配置
 st.set_page_config(
@@ -32,61 +48,69 @@ with st.sidebar:
     
     # Twitter/X 配置
     st.subheader("🐦 Twitter/X")
-    with st.expander("Twitter API 设置"):
-        twitter_api_key = st.text_input("Twitter API Key", type="password", key="twitter_key")
-        twitter_api_secret = st.text_input("Twitter API Secret", type="password", key="twitter_secret")
-        twitter_access_token = st.text_input("Twitter Access Token", type="password", key="twitter_token")
-        twitter_access_secret = st.text_input("Twitter Access Token Secret", type="password", key="twitter_token_secret")
-        
-        if st.button("连接 Twitter", key="connect_twitter"):
-            if all([twitter_api_key, twitter_api_secret, twitter_access_token, twitter_access_secret]):
-                try:
-                    # 验证 Twitter API
-                    auth = tweepy.OAuthHandler(twitter_api_key, twitter_api_secret)
-                    auth.set_access_token(twitter_access_token, twitter_access_secret)
-                    api = tweepy.API(auth)
-                    
-                    # 测试连接
-                    api.verify_credentials()
-                    st.session_state.authenticated_platforms['twitter'] = {
-                        'api': api,
-                        'auth': auth,
-                        'credentials': {
-                            'api_key': twitter_api_key,
-                            'api_secret': twitter_api_secret,
-                            'access_token': twitter_access_token,
-                            'access_secret': twitter_access_secret
+    if not TWITTER_AVAILABLE:
+        st.error("❌ Twitter 功能不可用 - 请安装 tweepy")
+        st.code("pip install tweepy")
+    else:
+        with st.expander("Twitter API 设置"):
+            twitter_api_key = st.text_input("Twitter API Key", type="password", key="twitter_key")
+            twitter_api_secret = st.text_input("Twitter API Secret", type="password", key="twitter_secret")
+            twitter_access_token = st.text_input("Twitter Access Token", type="password", key="twitter_token")
+            twitter_access_secret = st.text_input("Twitter Access Token Secret", type="password", key="twitter_token_secret")
+            
+            if st.button("连接 Twitter", key="connect_twitter"):
+                if all([twitter_api_key, twitter_api_secret, twitter_access_token, twitter_access_secret]):
+                    try:
+                        # 验证 Twitter API
+                        auth = tweepy.OAuthHandler(twitter_api_key, twitter_api_secret)
+                        auth.set_access_token(twitter_access_token, twitter_access_secret)
+                        api = tweepy.API(auth)
+                        
+                        # 测试连接
+                        api.verify_credentials()
+                        st.session_state.authenticated_platforms['twitter'] = {
+                            'api': api,
+                            'auth': auth,
+                            'credentials': {
+                                'api_key': twitter_api_key,
+                                'api_secret': twitter_api_secret,
+                                'access_token': twitter_access_token,
+                                'access_secret': twitter_access_secret
+                            }
                         }
-                    }
-                    st.success("✅ Twitter 连接成功！")
-                except Exception as e:
-                    st.error(f"❌ Twitter 连接失败: {str(e)}")
-            else:
-                st.warning("请填写所有 Twitter API 凭据")
+                        st.success("✅ Twitter 连接成功！")
+                    except Exception as e:
+                        st.error(f"❌ Twitter 连接失败: {str(e)}")
+                else:
+                    st.warning("请填写所有 Twitter API 凭据")
     
     # Facebook 配置
     st.subheader("📘 Facebook")
-    with st.expander("Facebook API 设置"):
-        fb_page_access_token = st.text_input("Facebook Page Access Token", type="password", key="fb_token")
-        fb_page_id = st.text_input("Facebook Page ID", key="fb_page_id")
-        
-        if st.button("连接 Facebook", key="connect_facebook"):
-            if fb_page_access_token and fb_page_id:
-                try:
-                    # 验证 Facebook token
-                    graph = facebook.GraphAPI(access_token=fb_page_access_token, version="3.1")
-                    page_info = graph.get_object(fb_page_id)
-                    
-                    st.session_state.authenticated_platforms['facebook'] = {
-                        'graph': graph,
-                        'page_id': fb_page_id,
-                        'token': fb_page_access_token
-                    }
-                    st.success(f"✅ Facebook 连接成功！页面: {page_info.get('name', 'Unknown')}")
-                except Exception as e:
-                    st.error(f"❌ Facebook 连接失败: {str(e)}")
-            else:
-                st.warning("请填写 Facebook 凭据")
+    if not FACEBOOK_AVAILABLE:
+        st.error("❌ Facebook 功能不可用 - 请安装 facebook-sdk")
+        st.code("pip install facebook-sdk")
+    else:
+        with st.expander("Facebook API 设置"):
+            fb_page_access_token = st.text_input("Facebook Page Access Token", type="password", key="fb_token")
+            fb_page_id = st.text_input("Facebook Page ID", key="fb_page_id")
+            
+            if st.button("连接 Facebook", key="connect_facebook"):
+                if fb_page_access_token and fb_page_id:
+                    try:
+                        # 验证 Facebook token
+                        graph = facebook.GraphAPI(access_token=fb_page_access_token, version="3.1")
+                        page_info = graph.get_object(fb_page_id)
+                        
+                        st.session_state.authenticated_platforms['facebook'] = {
+                            'graph': graph,
+                            'page_id': fb_page_id,
+                            'token': fb_page_access_token
+                        }
+                        st.success(f"✅ Facebook 连接成功！页面: {page_info.get('name', 'Unknown')}")
+                    except Exception as e:
+                        st.error(f"❌ Facebook 连接失败: {str(e)}")
+                else:
+                    st.warning("请填写 Facebook 凭据")
     
     # LinkedIn 配置
     st.subheader("💼 LinkedIn")
@@ -179,9 +203,18 @@ else:
             
             # 选择平台
             selected_platforms = []
+            available_platforms = {
+                'twitter': TWITTER_AVAILABLE,
+                'facebook': FACEBOOK_AVAILABLE,
+                'linkedin': LINKEDIN_AVAILABLE
+            }
+            
             for platform in st.session_state.authenticated_platforms:
-                if st.checkbox(f"发布到 {platform.title()}", value=True, key=f"select_{platform}"):
-                    selected_platforms.append(platform)
+                if available_platforms.get(platform, False):
+                    if st.checkbox(f"发布到 {platform.title()}", value=True, key=f"select_{platform}"):
+                        selected_platforms.append(platform)
+                else:
+                    st.error(f"❌ {platform.title()} 功能不可用")
             
             # 发布时间
             publish_now = st.radio("发布时间", ["立即发布", "定时发布"])
@@ -441,6 +474,22 @@ st.sidebar.markdown("""
 ---
 ### 📦 安装依赖
 运行此应用需要安装以下包：
+
+**基础包（必需）:**
+```bash
+pip install streamlit requests pillow
+```
+
+**可选包（各平台功能）:**
+```bash
+# Twitter 支持
+pip install tweepy
+
+# Facebook 支持  
+pip install facebook-sdk
+```
+
+**或者一键安装全部:**
 ```bash
 pip install streamlit tweepy facebook-sdk requests pillow
 ```
