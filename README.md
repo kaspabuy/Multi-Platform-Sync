@@ -159,9 +159,9 @@ MIT License - 详见 LICENSE 文件
 
 ## 📞 技术支持
 
-- 🐛 问题报告：GitHub Issues
-- 💬 功能建议：GitHub Discussions  
-- 📧 联系方式：通过 GitHub 联系
+- 🐛 问题报告：kapsabuy@gmail.com
+- 💬 功能建议：kaspabuy@gmail.com
+- 📧 联系方式：通过 kaspabuy@gmail.com 联系
 
 ---
 
