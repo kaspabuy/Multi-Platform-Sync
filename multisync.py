@@ -57,6 +57,91 @@ if 'authenticated_platforms' not in st.session_state:
 if 'publish_history' not in st.session_state:
     st.session_state.publish_history = []
 
+# 发布函数定义（需要在调用前定义）
+def publish_to_twitter(content, twitter_config):
+    """发布到 Twitter"""
+    try:
+        client = twitter_config['client']
+        
+        # 检查内容长度
+        if len(content) > 280:
+            return {'success': False, 'error': '内容超过 280 字符限制'}
+        
+        # 发布推文
+        response = client.create_tweet(text=content)
+        
+        return {'success': True, 'post_id': response.data['id']}
+        
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def publish_to_linkedin(content, linkedin_config):
+    """发布到 LinkedIn"""
+    try:
+        token = linkedin_config['token']
+        person_id = linkedin_config['person_id']
+        
+        headers = {
+            'Authorization': f'Bearer {token}',
+            'Content-Type': 'application/json'
+        }
+        
+        # 准备发布数据
+        post_data = {
+            'author': f'urn:li:person:{person_id}',
+            'lifecycleState': 'PUBLISHED',
+            'specificContent': {
+                'com.linkedin.ugc.ShareContent': {
+                    'shareCommentary': {
+                        'text': content
+                    },
+                    'shareMediaCategory': 'NONE'
+                }
+            },
+            'visibility': {
+                'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
+            }
+        }
+        
+        # 发布帖子
+        response = requests.post(
+            'https://api.linkedin.com/v2/ugcPosts',
+            headers=headers,
+            json=post_data
+        )
+        
+        if response.status_code == 201:
+            post_id = response.json().get('id', '')
+            return {'success': True, 'post_id': post_id}
+        else:
+            return {'success': False, 'error': f'HTTP {response.status_code}: {response.text}'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
+def publish_to_weibo(content, weibo_config):
+    """发布到微博"""
+    try:
+        token = weibo_config['token']
+        
+        # 微博发布 API
+        url = 'https://api.weibo.com/2/statuses/update.json'
+        data = {
+            'access_token': token,
+            'status': content
+        }
+        
+        response = requests.post(url, data=data)
+        
+        if response.status_code == 200:
+            result = response.json()
+            return {'success': True, 'post_id': result.get('id', '')}
+        else:
+            return {'success': False, 'error': f'微博API错误: {response.text}'}
+            
+    except Exception as e:
+        return {'success': False, 'error': str(e)}
+
 # 侧边栏 - 平台配置
 with st.sidebar:
     st.header("🔑 平台配置")
@@ -252,12 +337,14 @@ else:
             # 平台特定设置
             st.subheader("⚙️ 平台设置")
             
-            # Twitter 特定设置
+                            # Twitter 特定设置
             if 'twitter' in selected_platforms:
                 st.write("**🐦 Twitter 设置**")
                 add_hashtags = st.checkbox("自动添加热门标签", key="twitter_hashtags")
                 if add_hashtags:
                     hashtags = st.text_input("标签（用空格分隔）", value="#社交媒体 #分享", key="twitter_hashtag_input")
+                else:
+                    hashtags = ""
         
         # 发布按钮
         button_text = "👀 预览发布内容" if publish_mode == "预览模式" else "🚀 发布到选中平台"
@@ -277,7 +364,7 @@ else:
                             preview_content = post_content
                             
                             # 添加平台特定内容
-                            if platform == 'twitter' and 'twitter_hashtags' in locals() and add_hashtags:
+                            if platform == 'twitter' and add_hashtags and hashtags:
                                 preview_content += f"\n\n{hashtags}"
                             
                             if link_url:
@@ -299,7 +386,7 @@ else:
                                 final_content = post_content
                                 
                                 # 添加平台特定内容
-                                if platform == 'twitter' and 'add_hashtags' in locals() and add_hashtags:
+                                if platform == 'twitter' and add_hashtags and hashtags:
                                     final_content += f"\n\n{hashtags}"
                                 
                                 if link_url:
@@ -405,91 +492,6 @@ else:
         **发布记录**: {len(st.session_state.publish_history)} 条
         **依赖状态**: {"✅ 完整" if all(dependencies_status.values()) else "⚠️ 部分缺失"}
         """)
-
-# 发布函数定义
-def publish_to_twitter(content, twitter_config):
-    """发布到 Twitter"""
-    try:
-        client = twitter_config['client']
-        
-        # 检查内容长度
-        if len(content) > 280:
-            return {'success': False, 'error': '内容超过 280 字符限制'}
-        
-        # 发布推文
-        response = client.create_tweet(text=content)
-        
-        return {'success': True, 'post_id': response.data['id']}
-        
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-def publish_to_linkedin(content, linkedin_config):
-    """发布到 LinkedIn"""
-    try:
-        token = linkedin_config['token']
-        person_id = linkedin_config['person_id']
-        
-        headers = {
-            'Authorization': f'Bearer {token}',
-            'Content-Type': 'application/json'
-        }
-        
-        # 准备发布数据
-        post_data = {
-            'author': f'urn:li:person:{person_id}',
-            'lifecycleState': 'PUBLISHED',
-            'specificContent': {
-                'com.linkedin.ugc.ShareContent': {
-                    'shareCommentary': {
-                        'text': content
-                    },
-                    'shareMediaCategory': 'NONE'
-                }
-            },
-            'visibility': {
-                'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC'
-            }
-        }
-        
-        # 发布帖子
-        response = requests.post(
-            'https://api.linkedin.com/v2/ugcPosts',
-            headers=headers,
-            json=post_data
-        )
-        
-        if response.status_code == 201:
-            post_id = response.json().get('id', '')
-            return {'success': True, 'post_id': post_id}
-        else:
-            return {'success': False, 'error': f'HTTP {response.status_code}: {response.text}'}
-            
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
-
-def publish_to_weibo(content, weibo_config):
-    """发布到微博"""
-    try:
-        token = weibo_config['token']
-        
-        # 微博发布 API
-        url = 'https://api.weibo.com/2/statuses/update.json'
-        data = {
-            'access_token': token,
-            'status': content
-        }
-        
-        response = requests.post(url, data=data)
-        
-        if response.status_code == 200:
-            result = response.json()
-            return {'success': True, 'post_id': result.get('id', '')}
-        else:
-            return {'success': False, 'error': f'微博API错误: {response.text}'}
-            
-    except Exception as e:
-        return {'success': False, 'error': str(e)}
 
 # 底部信息
 st.markdown("---")
